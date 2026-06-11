@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>常规进销存仪表盘（搜索版）</title>
+    <style>
+        :root {
+            --red: #cf1322;
+            --orange: #d48806;
+            --green: #389e0d;
+            --bg: #f5f7fa;
+            --card-bg: #ffffff;
+            --text-main: #262626;
+            --text-secondary: #8c8c8c;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: var(--bg); margin: 0; padding: 20px; color: var(--text-main); }
+        
+        .header { text-align: center; margin-bottom: 25px; }
+        .header h1 { margin: 0; font-size: 22px; color: #001529; }
+        .header .date { font-size: 13px; color: var(--text-secondary); margin-top: 5px; }
+
+        /* 搜索框相关样式 */
+        .search-container {
+            max-width: 1200px;
+            margin: 0 auto 20px auto;
+            display: flex;
+            gap: 12px;
+        }
+        .search-input {
+            flex: 1;
+            padding: 12px 18px;
+            font-size: 15px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            outline: none;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        .search-input:focus {
+            border-color: #1890ff;
+            box-shadow: 0 0 0 2px rgba(24,144,255,0.2), inset 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .clear-btn {
+            padding: 12px 24px;
+            font-size: 15px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            background-color: #ffffff;
+            color: #595959;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .clear-btn:hover {
+            background-color: #f5f5f5;
+            color: #262626;
+            border-color: #d9d9d9;
+        }
+
+        .dashboard-container { display: flex; gap: 30px; max-width: 1200px; margin: 0 auto; }
+        .column { flex: 1; }
+        .column-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 15px; border-bottom: 2px solid #e8e8e8; padding-bottom: 8px; }
+        .column-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+        .column-header .sort-label { font-size: 11px; color: var(--text-secondary); }
+
+        .item-list { display: flex; flex-direction: column; gap: 10px; }
+        .item-card { 
+            background: var(--card-bg); border-radius: 6px; padding: 12px 15px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            border-left: 4px solid #d9d9d9;
+        }
+        
+        /* 颜色预警 */
+        .item-card.red { border-left-color: var(--red); }
+        .item-card.orange { border-left-color: var(--orange); }
+        .item-card.green { border-left-color: var(--green); }
+        
+        /* 低库存高亮背景 */
+        .item-card.urgent-bg { background-color: #fff1f0; }
+
+        .model-info { display: flex; align-items: center; gap: 8px; }
+        .model-name { font-weight: 600; font-size: 14px; }
+        
+        .badge { 
+            font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: normal;
+        }
+        .badge-red { background: #fff1f0; color: #cf1322; border: 1px solid #ffa39e; }
+        .badge-orange { background: #fffbe6; color: #d48806; border: 1px solid #ffe58f; }
+
+        .inventory-info { text-align: right; }
+        .inventory-count { font-size: 16px; font-weight: bold; line-height: 1; }
+        .inventory-label { font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
+
+        @media (max-width: 768px) {
+            .dashboard-container { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>常规进销存仪表盘（搜索版）</h1>
+        <div class="date">数据日期：2026-06-10 (发货数据扣减后)</div>
+    </div>
+
+    <!-- 搜索栏 -->
+    <div class="search-container">
+        <input type="text" id="searchInput" class="search-input" placeholder="输入型号名称搜索（不区分大小写）..." oninput="filterModels()">
+        <button class="clear-btn" onclick="clearSearch()">清除</button>
+    </div>
+
+    <!-- 无搜索结果提示 -->
+    <div id="noResults" style="display: none; text-align: center; padding: 40px 20px; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border: 1px solid #e8e8e8; max-width: 1200px; margin: 0 auto 20px auto; color: #8c8c8c; font-size: 15px;">
+        🔍 未找到与 “<span id="searchKeyword" style="font-weight: bold; color: #1890ff;"></span>” 匹配的型号
+    </div>
+
+    <div class="dashboard-container">
+        <!-- 左侧：核心主营型号 -->
+        <div class="column">
+            <div class="column-header">
+                <h2>核心主营型号</h2>
+                <span class="sort-label">库存升序排列</span>
+            </div>
+            <div class="item-list">
+                <div class="item-card red urgent-bg">
+                    <div class="model-info">
+                        <span class="model-name">AX8 PRO</span>
+                        <span class="badge badge-red">告急</span>
+                    </div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">1</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info">
+                        <span class="model-name">D8 PRO</span>
+                    </div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">1</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info">
+                        <span class="model-name">MT60</span>
+                    </div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">2</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card orange">
+                    <div class="model-info">
+                        <span class="model-name">F95</span>
+                    </div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">413</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card orange">
+                    <div class="model-info">
+                        <span class="model-name">MC80</span>
+                        <span class="badge badge-orange">下滑入警戒区</span>
+                    </div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">455</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">MT30</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">618</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">MF985</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">1116</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">MC50 PRO</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">1483</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">MC60</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">1742</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">U90</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">2070</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">M100</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">2424</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">GE 1800</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">2519</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">MT80</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">4252</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：其他型号 -->
+        <div class="column">
+            <div class="column-header">
+                <h2>其他型号</h2>
+                <span class="sort-label">库存升序排列</span>
+            </div>
+            <div class="item-list">
+                <div class="item-card red">
+                    <div class="model-info"><span class="model-name">MF982-ASR (亚太版)</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">0</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info"><span class="model-name">AX9 pro B</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">0</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info"><span class="model-name">AX8 PRO-M (美版)</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">0</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info"><span class="model-name">MF985-M (美版)</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">0</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info"><span class="model-name">MT85</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">0</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info"><span class="model-name">MT10</span><span class="badge badge-red" style="margin-left:5px;">等待补货确认</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">0</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info"><span class="model-name">MF981</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">1</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info"><span class="model-name">MF980L</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">5</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info"><span class="model-name">MF955V (美版)</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">29</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card red">
+                    <div class="model-info"><span class="model-name">G5010</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">32</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card orange">
+                    <div class="model-info"><span class="model-name">MT80-M (美版)</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">225</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card orange">
+                    <div class="model-info"><span class="model-name">U80 ULTRA</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">303</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">MF982</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">971</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">MC50</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">996</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">M200</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">801</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">A10S</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">1634</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">U90-M (美版)</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">1881</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">F8</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">3896</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">MT30-M (美版)</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">5481</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+                <div class="item-card green">
+                    <div class="model-info"><span class="model-name">F90</span></div>
+                    <div class="inventory-info">
+                        <div class="inventory-count">8160</div>
+                        <div class="inventory-label">库存</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function filterModels() {
+            const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            const cards = document.querySelectorAll('.item-card');
+            let matchCount = 0;
+            
+            cards.forEach(card => {
+                const modelName = card.querySelector('.model-name').textContent.toLowerCase();
+                if (modelName.includes(query)) {
+                    card.style.display = 'flex';
+                    matchCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            
+            const noResults = document.getElementById('noResults');
+            const searchKeyword = document.getElementById('searchKeyword');
+            if (query && matchCount === 0) {
+                noResults.style.display = 'block';
+                searchKeyword.textContent = document.getElementById('searchInput').value.trim();
+            } else {
+                noResults.style.display = 'none';
+            }
+        }
+        
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            filterModels();
+        }
+    </script>
+</body>
+</html>
